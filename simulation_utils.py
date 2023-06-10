@@ -2,11 +2,13 @@ import heapq
 import numpy as np
 from abc import ABC, abstractmethod
 
+
 class Event(ABC):
-    def __init__(self, time, simulator):
+    def __init__(self, time, simulator, server):
         self.time = time
         self.simulator = simulator
-        
+        self.server = server
+
     def __lt__(self, other):
         return self.time < other.time
 
@@ -17,8 +19,7 @@ class Event(ABC):
 
 class ArrivalEvent(Event):
     def __init__(self, time, simulator, server):
-        super().__init__(time, simulator)
-        self.server = server
+        super().__init__(time, simulator, server)
 
     def process(self):
         if self.simulator.servers[self.server].is_busy():
@@ -30,24 +31,20 @@ class ArrivalEvent(Event):
             self.simulator.servers[self.server].set_busy()
             service_time = np.random.exponential(1/self.simulator.server_service_rate[self.server])
             exit_time = self.time + service_time
-            self.simulator.schedule(ServiceEvent(self.time ,exit_time ,service_time ,self.simulator ,self.server))
+            self.simulator.schedule(ServiceEvent(self.time, exit_time, service_time, self.simulator, self.server))
 
 
 class ServiceEvent(Event):
     def __init__(self, arrival_time, time, service_time, simulator, server):
-        super().__init__(time, simulator)
-        self.server = server
+        super().__init__(time, simulator, server)
         self.arrival_time = arrival_time
         self.service_time = service_time
 
     def process(self):
         self.simulator.processed_event_count += 1
         # update wait_time and service_time
-        self.simulator.wait_time += max(self.simulator.servers[self.server].last_process_time - self.arrival_time, 0)
+        self.simulator.wait_time += self.time - self.service_time - self.arrival_time
         self.simulator.service_time += self.service_time
-        # update last_process_time of server
-        self.simulator.servers[self.server].last_process_time = self.time
-        
         # if there are unprocessed Arrival events, process the first one
         if self.simulator.servers[self.server].queue:
             service_time = np.random.exponential(1/self.simulator.server_service_rate[self.server])
@@ -63,7 +60,6 @@ class Server:
         self.queue_size = queue_size
         self.queue = []
         self.busy = False
-        self.last_process_time = 0
 
     def enqueue(self, event):
         self.queue.append(event)
@@ -93,13 +89,13 @@ class Simulator:
         self.arrival_rate = arrival_rate
         self.server_queue_size = server_queue_size
         self.server_service_rate = server_service_rate
-        
+
         # output parameters
         self.processed_event_count = 0
         self.tossed_event_count = 0
         self.wait_time = 0
         self.service_time = 0
-        
+
         # simulation objects
         self.current_time = 1
         self.servers = []
@@ -125,8 +121,9 @@ class Simulator:
     def schedule(self, event):
         heapq.heappush(self.event_list, event)
 
+    def get_total_time(self):
+        return (self.wait_time + self.service_time) / self.processed_event_count
+
     def print_results(self):
-        self.wait_time /= self.processed_event_count
-        self.service_time /= self.processed_event_count
-        print(f"{self.processed_event_count} {self.tossed_event_count} {self.current_time} {self.wait_time} {self.service_time}")
+        print(f"{self.processed_event_count} {self.tossed_event_count} {self.current_time} {self.wait_time / self.processed_event_count} {self.service_time / self.processed_event_count}")
         
